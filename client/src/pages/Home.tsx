@@ -1,284 +1,398 @@
-import { useState, useRef } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, Download, RotateCcw } from 'lucide-react';
-import { parseCSV, matchAndClassify, calculateSummary, MatchedRecord, SummaryResult } from '@/lib/csvParser';
-import { toast } from 'sonner';
+import { useState, useRef } from "react";
+import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Upload,
+  Download,
+  RotateCcw,
+  History,
+  Trash2,
+  ChevronRight,
+  FileText,
+} from "lucide-react";
+import { toast } from "sonner";
+
+const STATUS_COLORS: Record<string, string> = {
+  A: "bg-red-100 text-red-700 border-red-200",
+  B: "bg-yellow-100 text-yellow-700 border-yellow-200",
+  C: "bg-orange-100 text-orange-700 border-orange-200",
+  D: "bg-gray-100 text-gray-600 border-gray-200",
+};
+
+function fmt(n: number) {
+  return `SGD ${n.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function KPICard({ label, value, highlight }: { label: string; value: string; highlight?: string }) {
+  return (
+    <div className={`rounded-lg border p-4 ${highlight || "bg-white"}`}>
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className="text-lg font-bold">{value}</p>
+    </div>
+  );
+}
 
 export default function Home() {
   const [aoikumoFile, setAoikumoFile] = useState<File | null>(null);
   const [sequoiaFile, setSequoiaFile] = useState<File | null>(null);
-  const [matched, setMatched] = useState<MatchedRecord[]>([]);
-  const [summary, setSummary] = useState<SummaryResult | null>(null);
-  const [excludeMap, setExcludeMap] = useState<Map<string, boolean>>(new Map());
-  const [settleMap, setSettleMap] = useState<Map<string, boolean>>(new Map());
-  const [settlePctMap, setSettlePctMap] = useState<Map<string, number>>(new Map());
+  const [sessionName, setSessionName] = useState("");
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [tab, setTab] = useState("upload");
   const aoikumoRef = useRef<HTMLInputElement>(null);
   const sequoiaRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = async (file: File, type: 'aoikumo' | 'sequoia') => {
-    if (!file.name.endsWith('.csv')) {
-      toast.error('Please select a CSV file');
-      return;
-    }
+  const utils = trpc.useUtils();
 
-    if (type === 'aoikumo') {
-      setAoikumoFile(file);
-    } else {
-      setSequoiaFile(file);
-    }
-  };
+  // Queries
+  const sessionsQuery = trpc.unearned.listSessions.useQuery();
+  const sessionQuery = trpc.unearned.getSession.useQuery(
+    { sessionId: activeSessionId! },
+    { enabled: activeSessionId !== null }
+  );
+
+  // Mutations
+  const processFiles = trpc.unearned.processFiles.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Processed ${data.totalRecords} records — saved to database`);
+      utils.unearned.listSessions.invalidate();
+      setActiveSessionId(data.sessionId);
+      setTab("results");
+    },
+    onError: (e) => toast.error("Error: " + e.message),
+  });
+
+  const updateRow = trpc.unearned.updateRow.useMutation({
+    onSuccess: () => {
+      utils.unearned.getSession.invalidate({ sessionId: activeSessionId! });
+    },
+    onError: (e) => toast.error("Update failed: " + e.message),
+  });
+
+  const deleteSession = trpc.unearned.deleteSession.useMutation({
+    onSuccess: () => {
+      toast.success("Session deleted");
+      utils.unearned.listSessions.invalidate();
+      if (activeSessionId) {
+        setActiveSessionId(null);
+        setTab("upload");
+      }
+    },
+    onError: (e) => toast.error("Delete failed: " + e.message),
+  });
 
   const handleProcess = async () => {
     if (!aoikumoFile || !sequoiaFile) {
-      toast.error('Please upload both Aoikumo and Sequoia CSV files');
+      toast.error("Please upload both Aoikumo and Sequoia CSV files");
       return;
     }
-
-    try {
-      const aoikumoText = await aoikumoFile.text();
-      const sequoiaText = await sequoiaFile.text();
-
-      const aoikumoRecords = parseCSV(aoikumoText).map((r: any) => ({
-        customer_ref: r.customer_ref || r['Customer Ref'] || '',
-        item: r.item || r['Item'] || '',
-        owing: Number(r.owing || r['Owing'] || 0),
-        unearned: Number(r.unearned || r['Unearned'] || 0),
-      }));
-
-      const sequoiaRecords = parseCSV(sequoiaText).map((r: any) => ({
-        customer_ref: r.customer_ref || r['Customer Ref'] || '',
-        item: r.item || r['Item'] || '',
-        balance: Number(r.balance || r['Balance'] || 0),
-        unearned: Number(r.unearned || r['Unearned'] || 0),
-      }));
-
-      const matchedData = matchAndClassify(aoikumoRecords, sequoiaRecords);
-      setMatched(matchedData);
-
-      const newExcludeMap = new Map<string, boolean>();
-      const newSettleMap = new Map<string, boolean>();
-      const newSettlePctMap = new Map<string, number>();
-
-      matchedData.forEach(record => {
-        const key = `${record.customer_ref}|${record.item}`;
-        newExcludeMap.set(key, record.exclude_default);
-      });
-
-      setExcludeMap(newExcludeMap);
-      setSettleMap(newSettleMap);
-      setSettlePctMap(newSettlePctMap);
-
-      const result = calculateSummary(matchedData, newExcludeMap, newSettleMap, newSettlePctMap);
-      setSummary(result);
-
-      toast.success(`Processed ${matchedData.length} records`);
-    } catch (error) {
-      toast.error('Error processing files: ' + (error as Error).message);
-    }
-  };
-
-  const handleToggleExclude = (key: string) => {
-    const newMap = new Map(excludeMap);
-    newMap.set(key, !newMap.get(key));
-    setExcludeMap(newMap);
-
-    const result = calculateSummary(matched, newMap, settleMap, settlePctMap);
-    setSummary(result);
-  };
-
-  const handleToggleSettle = (key: string) => {
-    const newMap = new Map(settleMap);
-    newMap.set(key, !newMap.get(key));
-    setSettleMap(newMap);
-
-    const result = calculateSummary(matched, excludeMap, newMap, settlePctMap);
-    setSummary(result);
+    const name = sessionName.trim() || `Session ${new Date().toLocaleDateString("en-SG")}`;
+    const [aoikumoCsv, sequoiaCsv] = await Promise.all([
+      aoikumoFile.text(),
+      sequoiaFile.text(),
+    ]);
+    processFiles.mutate({
+      sessionName: name,
+      aoikumoFileName: aoikumoFile.name,
+      sequoiaFileName: sequoiaFile.name,
+      aoikumoCsv,
+      sequoiaCsv,
+    });
   };
 
   const handleReset = () => {
     setAoikumoFile(null);
     setSequoiaFile(null);
-    setMatched([]);
-    setSummary(null);
-    setExcludeMap(new Map());
-    setSettleMap(new Map());
-    setSettlePctMap(new Map());
-    if (aoikumoRef.current) aoikumoRef.current.value = '';
-    if (sequoiaRef.current) sequoiaRef.current.value = '';
+    setSessionName("");
+    if (aoikumoRef.current) aoikumoRef.current.value = "";
+    if (sequoiaRef.current) sequoiaRef.current.value = "";
   };
 
   const handleExportCSV = () => {
-    if (!matched || !summary) return;
-
-    const headers = ['Customer Ref', 'Item', 'Aoikumo Owing', 'Status', 'Exclude?', 'Settle?'];
-    const rows = matched.map(r => {
-      const key = `${r.customer_ref}|${r.item}`;
-      return [
-        r.customer_ref,
-        r.item,
-        r.aoikumo_owing,
-        r.status,
-        excludeMap.get(key) ? 'Yes' : 'No',
-        settleMap.get(key) ? 'Yes' : 'No',
-      ];
-    });
-
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    if (!sessionQuery.data) return;
+    const { rows } = sessionQuery.data;
+    const headers = [
+      "Customer Ref", "Item", "Aoikumo Owing", "Aoikumo Unearned",
+      "Sequoia Balance", "Sequoia Unearned", "Status", "Status Reason",
+      "Exclude", "Settle", "Settle %",
+    ];
+    const csvRows = rows.map((r) => [
+      r.customerRef, r.item,
+      r.aoikumoOwing, r.aoikumoUnearned,
+      r.sequoiaBalance, r.sequoiaUnearned,
+      r.status, r.statusReason ?? "",
+      r.excludeFlag, r.settleFlag, r.settlePct,
+    ]);
+    const csv = [headers, ...csvRows].map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = 'unearned_calculation.csv';
+    a.download = `unearned_${sessionQuery.data.session.sessionName.replace(/\s+/g, "_")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  const session = sessionQuery.data?.session;
+  const rows = sessionQuery.data?.rows ?? [];
+  const statusBreakdown = (session?.statusBreakdown as Record<string, { count: number; amount: number }>) ?? {};
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Unearned Auto Calculator</h1>
-        <p className="text-gray-600 mb-6">Upload Aoikumo and Sequoia CSV files to calculate unearned exposure and settlement amounts.</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b px-6 py-4">
+        <h1 className="text-xl font-bold text-gray-900">Unearned Auto Calculator</h1>
+        <p className="text-sm text-gray-500">Upload CSV files → auto-classify → track exclusions & settlements</p>
+      </div>
 
-        {/* Upload Section */}
-        <Card className="p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Aoikumo CSV</label>
-              <Input
-                ref={aoikumoRef}
-                type="file"
-                accept=".csv"
-                onChange={(e) => e.target.files && handleFileSelect(e.target.files[0], 'aoikumo')}
-                className="cursor-pointer"
-              />
-              {aoikumoFile && <p className="text-sm text-green-600 mt-1">✓ {aoikumoFile.name}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Sequoia CSV</label>
-              <Input
-                ref={sequoiaRef}
-                type="file"
-                accept=".csv"
-                onChange={(e) => e.target.files && handleFileSelect(e.target.files[0], 'sequoia')}
-                className="cursor-pointer"
-              />
-              {sequoiaFile && <p className="text-sm text-green-600 mt-1">✓ {sequoiaFile.name}</p>}
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={handleProcess} className="flex items-center gap-2">
-              <Upload size={16} /> Process Files
-            </Button>
-            <Button onClick={handleReset} variant="outline" className="flex items-center gap-2">
-              <RotateCcw size={16} /> Reset
-            </Button>
-          </div>
-        </Card>
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="mb-6">
+            <TabsTrigger value="upload" className="flex items-center gap-2">
+              <Upload size={14} /> Upload
+            </TabsTrigger>
+            <TabsTrigger value="results" disabled={!activeSessionId} className="flex items-center gap-2">
+              <FileText size={14} /> Results
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-2">
+              <History size={14} /> History
+              {sessionsQuery.data && sessionsQuery.data.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">{sessionsQuery.data.length}</Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Summary Section */}
-        {summary && (
-          <>
-            <Card className="p-6 mb-6 bg-blue-50">
-              <h2 className="text-lg font-semibold mb-4">Summary</h2>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {/* ── Upload Tab ── */}
+          <TabsContent value="upload">
+            <Card className="max-w-2xl">
+              <CardHeader>
+                <CardTitle className="text-base">Upload Files</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div>
-                  <p className="text-xs text-gray-600">Total Records</p>
-                  <p className="text-xl font-bold">{summary.total_records}</p>
+                  <label className="block text-sm font-medium mb-1">Session Name (optional)</label>
+                  <Input
+                    placeholder={`Session ${new Date().toLocaleDateString("en-SG")}`}
+                    value={sessionName}
+                    onChange={(e) => setSessionName(e.target.value)}
+                  />
                 </div>
-                <div>
-                  <p className="text-xs text-gray-600">Current Exposure</p>
-                  <p className="text-xl font-bold">SGD {summary.total_exposure.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">Excluded</p>
-                  <p className="text-xl font-bold text-red-600">SGD {summary.excluded_amount.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">After Exclusion</p>
-                  <p className="text-xl font-bold">SGD {summary.after_exclusion.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">Final Remaining</p>
-                  <p className="text-xl font-bold text-green-600">SGD {summary.final_remaining.toFixed(2)}</p>
-                </div>
-              </div>
-            </Card>
-
-            {/* Status Breakdown */}
-            <Card className="p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">Status Breakdown</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {Object.entries(summary.by_status).map(([status, data]) => (
-                  <div key={status} className="border rounded p-3">
-                    <p className="text-xs font-medium text-gray-600">Status {status}</p>
-                    <p className="text-lg font-bold">{data.count}</p>
-                    <p className="text-sm text-gray-600">SGD {data.amount.toFixed(2)}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Aoikumo CSV</label>
+                    <Input
+                      ref={aoikumoRef}
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => e.target.files && setAoikumoFile(e.target.files[0])}
+                    />
+                    {aoikumoFile && (
+                      <p className="text-xs text-green-600 mt-1">✓ {aoikumoFile.name}</p>
+                    )}
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Sequoia CSV</label>
+                    <Input
+                      ref={sequoiaRef}
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => e.target.files && setSequoiaFile(e.target.files[0])}
+                    />
+                    {sequoiaFile && (
+                      <p className="text-xs text-green-600 mt-1">✓ {sequoiaFile.name}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    onClick={handleProcess}
+                    disabled={processFiles.isPending || !aoikumoFile || !sequoiaFile}
+                    className="flex items-center gap-2"
+                  >
+                    <Upload size={14} />
+                    {processFiles.isPending ? "Processing…" : "Process & Save"}
+                  </Button>
+                  <Button variant="outline" onClick={handleReset} className="flex items-center gap-2">
+                    <RotateCcw size={14} /> Reset
+                  </Button>
+                </div>
+              </CardContent>
             </Card>
+          </TabsContent>
 
-            {/* Details Table */}
-            <Card className="p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">Details</h2>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Customer Ref</TableHead>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Aoikumo Owing</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Exclude</TableHead>
-                      <TableHead>Settle</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {matched.map((record, idx) => {
-                      const key = `${record.customer_ref}|${record.item}`;
-                      const isExcluded = excludeMap.get(key);
-                      const isSettled = settleMap.get(key);
-                      return (
-                        <TableRow key={idx}>
-                          <TableCell className="text-sm">{record.customer_ref}</TableCell>
-                          <TableCell className="text-sm">{record.item}</TableCell>
-                          <TableCell className="text-sm">SGD {record.aoikumo_owing.toFixed(2)}</TableCell>
-                          <TableCell className="text-sm">{record.status}</TableCell>
-                          <TableCell>
-                            <input
-                              type="checkbox"
-                              checked={isExcluded ?? false}
-                              onChange={() => handleToggleExclude(key)}
-                              className="cursor-pointer"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <input
-                              type="checkbox"
-                              checked={isSettled ?? false}
-                              onChange={() => handleToggleSettle(key)}
-                              className="cursor-pointer"
-                            />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </Card>
+          {/* ── Results Tab ── */}
+          <TabsContent value="results">
+            {session && (
+              <>
+                {/* KPI Banner */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+                  <KPICard label="Total Records" value={String(session.totalRecords)} />
+                  <KPICard label="Total Exposure" value={fmt(session.totalExposure)} />
+                  <KPICard label="Excluded" value={fmt(session.excludedAmount)} highlight="bg-red-50 border-red-200" />
+                  <KPICard label="After Exclusion" value={fmt(session.afterExclusion)} highlight="bg-blue-50 border-blue-200" />
+                  <KPICard label="Final Remaining" value={fmt(session.finalRemaining)} highlight="bg-green-50 border-green-200" />
+                </div>
 
-            {/* Export Button */}
-            <div className="flex gap-2">
-              <Button onClick={handleExportCSV} className="flex items-center gap-2">
-                <Download size={16} /> Export CSV
-              </Button>
+                {/* Status Breakdown */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  {Object.entries(statusBreakdown).sort().map(([s, d]) => (
+                    <div key={s} className={`rounded-lg border p-3 ${STATUS_COLORS[s] || ""}`}>
+                      <p className="text-xs font-semibold">Status {s}</p>
+                      <p className="text-base font-bold">{d.count} records</p>
+                      <p className="text-xs">{fmt(d.amount)}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 mb-4">
+                  <Button variant="outline" size="sm" onClick={handleExportCSV} className="flex items-center gap-2">
+                    <Download size={14} /> Export CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2 text-red-600 hover:text-red-700"
+                    onClick={() => deleteSession.mutate({ sessionId: session.id })}
+                    disabled={deleteSession.isPending}
+                  >
+                    <Trash2 size={14} /> Delete Session
+                  </Button>
+                </div>
+
+                {/* Detail Table */}
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-gray-50">
+                            <TableHead className="text-xs">Customer Ref</TableHead>
+                            <TableHead className="text-xs">Item</TableHead>
+                            <TableHead className="text-xs text-right">Owing</TableHead>
+                            <TableHead className="text-xs">Status</TableHead>
+                            <TableHead className="text-xs">Reason</TableHead>
+                            <TableHead className="text-xs text-center">Exclude</TableHead>
+                            <TableHead className="text-xs text-center">Settle</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {rows.map((r) => (
+                            <TableRow key={r.id} className={r.excludeFlag === "Y" ? "opacity-50" : ""}>
+                              <TableCell className="text-xs font-mono">{r.customerRef}</TableCell>
+                              <TableCell className="text-xs">{r.item}</TableCell>
+                              <TableCell className="text-xs text-right font-mono">
+                                {fmt(r.aoikumoOwing)}
+                              </TableCell>
+                              <TableCell>
+                                <span className={`text-xs px-2 py-0.5 rounded border font-semibold ${STATUS_COLORS[r.status] || ""}`}>
+                                  {r.status}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-xs text-gray-500 max-w-[200px] truncate">
+                                {r.statusReason}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={r.excludeFlag === "Y"}
+                                  onChange={() =>
+                                    updateRow.mutate({
+                                      rowId: r.id,
+                                      sessionId: session.id,
+                                      excludeFlag: r.excludeFlag === "Y" ? "N" : "Y",
+                                    })
+                                  }
+                                  className="cursor-pointer w-4 h-4 accent-red-500"
+                                />
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={r.settleFlag === "Y"}
+                                  disabled={r.excludeFlag === "Y"}
+                                  onChange={() =>
+                                    updateRow.mutate({
+                                      rowId: r.id,
+                                      sessionId: session.id,
+                                      settleFlag: r.settleFlag === "Y" ? "N" : "Y",
+                                      settlePct: r.settleFlag === "Y" ? 0 : 100,
+                                    })
+                                  }
+                                  className="cursor-pointer w-4 h-4 accent-green-500 disabled:opacity-30"
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+            {!session && activeSessionId && (
+              <p className="text-gray-500 text-sm">Loading session…</p>
+            )}
+          </TabsContent>
+
+          {/* ── History Tab ── */}
+          <TabsContent value="history">
+            {sessionsQuery.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
+            {!sessionsQuery.isLoading && (!sessionsQuery.data || sessionsQuery.data.length === 0) && (
+              <p className="text-sm text-gray-500">No sessions yet. Upload files to get started.</p>
+            )}
+            <div className="space-y-2">
+              {sessionsQuery.data?.map((s) => (
+                <Card
+                  key={s.id}
+                  className="cursor-pointer hover:border-blue-300 transition-colors"
+                  onClick={() => {
+                    setActiveSessionId(s.id);
+                    setTab("results");
+                  }}
+                >
+                  <CardContent className="py-3 px-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">{s.sessionName}</p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(s.createdAt).toLocaleString("en-SG")} · {s.totalRecords} records
+                      </p>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        Exposure: {fmt(s.totalExposure)} → Remaining: {fmt(s.finalRemaining)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700 h-7 w-7 p-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteSession.mutate({ sessionId: s.id });
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                      <ChevronRight size={16} className="text-gray-400" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </>
-        )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

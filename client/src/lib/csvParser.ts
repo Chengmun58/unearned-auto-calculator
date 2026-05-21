@@ -123,7 +123,7 @@ export function matchAndClassify(
 
   aoikumoRecords.forEach(aoikumo => {
     const sequoia = sequoiaMap.get(`${aoikumo.customer_ref}|${aoikumo.item}`);
-    const { status, label, exclude_default } = classifyStatus(aoikumo, sequoia);
+    const { status, label, exclude_default } = classifyStatus(aoikumo, sequoia ?? null);
 
     matched.push({
       customer_ref: aoikumo.customer_ref,
