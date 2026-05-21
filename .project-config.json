@@ -1,0 +1,35 @@
+{
+  "build_command": "pnpm run build",
+  "capabilities": [],
+  "dev_command": "pnpm run dev",
+  "env_vars": {},
+  "experiments": null,
+  "git_remote": {
+    "repo_url": "s3://vida-prod-gitrepo/webdev-git/310519663223901690/PHTYKn2A4gBk6bi3k7MUL5",
+    "access_key_id": "ASIAZV3A2ECZOG2DJQEV",
+    "secret_access_key": "Y/HZve3pnpZsbXwRegn/2T0MHmkAe0K4jhZM/VEU",
+    "session_token": "IQoJb3JpZ2luX2VjED8aCXVzLWVhc3QtMSJIMEYCIQCNd6uT/fz1O4PJSh3ZJJTvqlUzTjJHGrC4SbBS2KvjhQIhAKP2hBBYJqtEPID9LtOE6DyUhGIm+yx3XFqXpseQg8emKvYDCAgQBBoMNjY1Mzg2MDk4ODY2Igx2gyrSrhYkdvcZMawq0wOsAUXQsGcoI9o8VXWqLeSSukw9bLUUjK3ml4r0DLs6Sfiubgf9O3tBux9JbV1vdevns5kCM8ad6sPCClWOkv47GdEggX3t8Y17QKtl4Ju4e8prv3CsLCGi5pDc6QnEnju4sQGSW4/oGWpD70mJ8G+7uE7bKO5w6raJe9kbKuc8DSKS+d088heXhrkDuZnj3AFI7CQ9OHNuQMxHY3xGD4PvVw5gmMGJ3qoiDu6kgs1dOk+SUgzTAtwcHscwkX1E4y72rdcVT1bUUbOI1KcIIxzHuM34Y6fyqBGjlZrI1Rf4unNCNbM/cqy2lvKq8UzgQ+kTJr00zeGTJE3/myVWqbYoRJsqtrUWLwaSgks/3xMImtkTXAxFXnbodmsJF7Jg+kd6q33rhGMBKwp4iGjmIststl0KT6cCcVa898mtOyz29RbAhH6cKqs+A18lvZGaurqX9cA//qI5ipMxQbyRNyeb/35JJclkDORnT2C36JXoWBWFql32IovwOrOUzlHQyX+0ZnLCETRdCdTBshKfr7gqxJuRlPG0/qeYp4vg3FpshTkrljeJgtaexUPCPMC2296CipjZ7o0fp5OmoTUG8saaWRdn+32/kYhovVW2HoMbIHRHCjD8tbzQBjqcAeHq08uW+lL2bFbOLtDvx0tB2QbYc54EV/BM+MrvMb+U4wMQvJMXjmwWJhuB39WUqJyfkH2pUy4so7tGyipde+Z5CbtevsNJ9SNJ5bCc4Tgke0CGEYJSqvHENd7BYEyetBy5bxSp0EJO9pWOsVnzhqQ0783kNDUlWZMz2AOVx6oq95aswdvfbLZyKlQtOHBoQ+J2jJPZFGwvzuYMVQ==",
+    "expiration": "2026-05-22T02:47:24.000Z"
+  },
+  "name": "unearned-auto-calculator",
+  "path": "/home/ubuntu/unearned-auto-calculator",
+  "port": 3000,
+  "secrets": {
+    "BUILT_IN_FORGE_API_KEY": "98tQVa5rqURNFX66j7Sr7J",
+    "BUILT_IN_FORGE_API_URL": "https://forge.manus.ai",
+    "JWT_SECRET": "maSwvcaRLAvdmuzEEAEFJg",
+    "OAUTH_SERVER_URL": "https://api.manus.im",
+    "OWNER_NAME": "Cheng Mun Wai",
+    "OWNER_OPEN_ID": "BZxKthx7Mu2PrG2JbvExwA",
+    "VITE_ANALYTICS_ENDPOINT": "https://manus-analytics.com",
+    "VITE_ANALYTICS_WEBSITE_ID": "e162e521-9798-402f-a94f-c7001ff5ff15",
+    "VITE_APP_ID": "PHTYKn2A4gBk6bi3k7MUL5",
+    "VITE_APP_LOGO": "",
+    "VITE_APP_TITLE": "Unearned Auto Calculator",
+    "VITE_FRONTEND_FORGE_API_KEY": "5yNrVyxTUjvLC68etUr3E4",
+    "VITE_FRONTEND_FORGE_API_URL": "https://forge.manus.ai",
+    "VITE_OAUTH_PORTAL_URL": "https://manus.im"
+  },
+  "template_id": "web-static",
+  "test_command": "pnpm test"
+}
