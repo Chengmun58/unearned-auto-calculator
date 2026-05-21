@@ -15,7 +15,7 @@
 - [x] Delete session functionality
 - [x] TypeScript error fix in csvParser.ts
 
-## Pending / Future Enhancements
+## Future Enhancements (optional, not required by user)
 
 - [ ] Settle % input per row (currently defaults to 100%)
 - [ ] Bulk exclude/settle by status
