@@ -22,30 +22,39 @@ export function parseCSVText(text: string): Record<string, string>[] {
   let currentRow: string[] = [];
   let inQuotes = false;
   let fieldWasQuoted = false;
+  let fieldHasContent = false;
 
   const pushField = () => {
     currentRow.push(fieldWasQuoted ? currentField : currentField.trim());
     currentField = "";
     fieldWasQuoted = false;
+    fieldHasContent = false;
   };
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
 
     if (char === '"') {
-      if (!inQuotes && currentField.trim() === "") {
+      if (!inQuotes && !fieldHasContent && currentField.trim() === "") {
         // Starting a quoted field.
         currentField = "";
         inQuotes = true;
         fieldWasQuoted = true;
+        fieldHasContent = true;
         continue;
       }
 
-      if (inQuotes && text[i + 1] === '"') {
-        currentField += '"';
-        i++;
+      if (inQuotes) {
+        if (text[i + 1] === '"') {
+          currentField += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
       } else {
-        inQuotes = !inQuotes;
+        // Quote in an unquoted field should be preserved as-is.
+        currentField += '"';
+        fieldHasContent = true;
       }
       continue;
     }
@@ -69,6 +78,9 @@ export function parseCSVText(text: string): Record<string, string>[] {
     }
 
     currentField += char;
+    if (char !== " " && char !== "\t") {
+      fieldHasContent = true;
+    }
   }
 
   // Flush last row/field

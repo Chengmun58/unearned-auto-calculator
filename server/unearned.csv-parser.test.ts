@@ -57,4 +57,11 @@ describe("parseCSVText", () => {
     expect(rows[0]?.["Customer Ref"]).toBe("CUST-7");
     expect(rows[0]?.Owing).toBe("");
   });
+
+  it("treats quotes inside unquoted fields as literal characters", () => {
+    const csv = 'Customer Ref,Item\nCUST-8,Plan "Alpha" Tier';
+    const rows = parseCSVText(csv);
+
+    expect(rows[0]?.Item).toBe('Plan "Alpha" Tier');
+  });
 });
