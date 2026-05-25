@@ -318,20 +318,43 @@ export default function Home() {
                                 />
                               </TableCell>
                               <TableCell className="text-center">
-                                <input
-                                  type="checkbox"
-                                  checked={r.settleFlag === "Y"}
-                                  disabled={r.excludeFlag === "Y"}
-                                  onChange={() =>
-                                    updateRow.mutate({
-                                      rowId: r.id,
-                                      sessionId: session.id,
-                                      settleFlag: r.settleFlag === "Y" ? "N" : "Y",
-                                      settlePct: r.settleFlag === "Y" ? 0 : 100,
-                                    })
-                                  }
-                                  className="cursor-pointer w-4 h-4 accent-green-500 disabled:opacity-30"
-                                />
+                                <div className="flex flex-col items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={r.settleFlag === "Y"}
+                                    disabled={r.excludeFlag === "Y"}
+                                    onChange={() =>
+                                      updateRow.mutate({
+                                        rowId: r.id,
+                                        sessionId: session.id,
+                                        settleFlag: r.settleFlag === "Y" ? "N" : "Y",
+                                        settlePct: r.settleFlag === "Y" ? 0 : 100,
+                                      })
+                                    }
+                                    className="cursor-pointer w-4 h-4 accent-green-500 disabled:opacity-30"
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="range"
+                                      min={0}
+                                      max={100}
+                                      step={5}
+                                      value={r.settlePct}
+                                      disabled={r.excludeFlag === "Y" || r.settleFlag !== "Y"}
+                                      onChange={(e) =>
+                                        updateRow.mutate({
+                                          rowId: r.id,
+                                          sessionId: session.id,
+                                          settlePct: Number(e.target.value),
+                                        })
+                                      }
+                                      className="w-24 cursor-pointer disabled:opacity-30"
+                                    />
+                                    <span className="text-xs font-semibold text-green-700 w-10 text-right">
+                                      {r.settlePct}%
+                                    </span>
+                                  </div>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}
