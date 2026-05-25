@@ -21,11 +21,26 @@ export function parseCSVText(text: string): Record<string, string>[] {
   let currentField = "";
   let currentRow: string[] = [];
   let inQuotes = false;
+  let fieldWasQuoted = false;
+
+  const pushField = () => {
+    currentRow.push(fieldWasQuoted ? currentField : currentField.trim());
+    currentField = "";
+    fieldWasQuoted = false;
+  };
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
 
     if (char === '"') {
+      if (!inQuotes && currentField.trim() === "") {
+        // Starting a quoted field.
+        currentField = "";
+        inQuotes = true;
+        fieldWasQuoted = true;
+        continue;
+      }
+
       if (inQuotes && text[i + 1] === '"') {
         currentField += '"';
         i++;
@@ -36,8 +51,7 @@ export function parseCSVText(text: string): Record<string, string>[] {
     }
 
     if (char === "," && !inQuotes) {
-      currentRow.push(currentField.trim());
-      currentField = "";
+      pushField();
       continue;
     }
 
@@ -45,8 +59,7 @@ export function parseCSVText(text: string): Record<string, string>[] {
       if (char === "\r" && text[i + 1] === "\n") {
         i++;
       }
-      currentRow.push(currentField.trim());
-      currentField = "";
+      pushField();
 
       if (currentRow.some((v) => v !== "")) {
         rows.push(currentRow);
@@ -59,20 +72,22 @@ export function parseCSVText(text: string): Record<string, string>[] {
   }
 
   // Flush last row/field
-  currentRow.push(currentField.trim());
+  pushField();
   if (currentRow.some((v) => v !== "")) {
     rows.push(currentRow);
   }
 
   if (rows.length < 2) return [];
 
-  const headers = rows[0] ?? [];
+  const headers = (rows[0] ?? []).map((h, idx) =>
+    idx === 0 ? h.replace(/^\uFEFF/, "").trim() : h.trim()
+  );
 
   return rows.slice(1).map((values) => {
     const row: Record<string, string> = {};
 
     headers.forEach((h, i) => {
-      row[h] = (values[i] ?? "").trim();
+      row[h] = values[i] ?? "";
     });
 
     return row;

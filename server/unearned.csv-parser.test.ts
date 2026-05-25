@@ -42,4 +42,19 @@ describe("parseCSVText", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.Owing).toBe("100.00");
   });
+
+  it("preserves leading/trailing spaces inside quoted fields", () => {
+    const csv = 'Customer Ref,Item\nCUST-6,"  Keep padded value  "';
+    const rows = parseCSVText(csv);
+
+    expect(rows[0]?.Item).toBe("  Keep padded value  ");
+  });
+
+  it("parses UTF-8 BOM in header and retains trailing empty columns", () => {
+    const csv = "\uFEFFCustomer Ref,Item,Owing\nCUST-7,Standard,";
+    const rows = parseCSVText(csv);
+
+    expect(rows[0]?.["Customer Ref"]).toBe("CUST-7");
+    expect(rows[0]?.Owing).toBe("");
+  });
 });
