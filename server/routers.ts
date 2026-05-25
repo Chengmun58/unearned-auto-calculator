@@ -16,14 +16,59 @@ import {
 
 // ─── CSV Parsing & Classification Logic ──────────────────────────────────────
 
-function parseCSVText(text: string): Record<string, string>[] {
-  const lines = text.trim().split(/\r?\n/);
+function splitCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  result.push(current.trim());
+  return result;
+}
+
+function normalizeCsvValue(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+export function parseCSVText(text: string): Record<string, string>[] {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+
+  const headers = splitCsvLine(lines[0]).map(normalizeCsvValue);
+
   return lines.slice(1).map((line) => {
-    const values = line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
+    const values = splitCsvLine(line).map(normalizeCsvValue);
     const row: Record<string, string> = {};
-    headers.forEach((h, i) => (row[h] = values[i] ?? ""));
+
+    headers.forEach((h, i) => {
+      row[h] = values[i] ?? "";
+    });
+
     return row;
   });
 }
