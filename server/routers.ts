@@ -16,14 +16,65 @@ import {
 
 // ─── CSV Parsing & Classification Logic ──────────────────────────────────────
 
-function parseCSVText(text: string): Record<string, string>[] {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
-  return lines.slice(1).map((line) => {
-    const values = line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
+export function parseCSVText(text: string): Record<string, string>[] {
+  const rows: string[][] = [];
+  let currentField = "";
+  let currentRow: string[] = [];
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (char === '"') {
+      if (inQuotes && text[i + 1] === '"') {
+        currentField += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      currentRow.push(currentField.trim());
+      currentField = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && text[i + 1] === "\n") {
+        i++;
+      }
+      currentRow.push(currentField.trim());
+      currentField = "";
+
+      if (currentRow.some((v) => v !== "")) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      continue;
+    }
+
+    currentField += char;
+  }
+
+  // Flush last row/field
+  currentRow.push(currentField.trim());
+  if (currentRow.some((v) => v !== "")) {
+    rows.push(currentRow);
+  }
+
+  if (rows.length < 2) return [];
+
+  const headers = rows[0] ?? [];
+
+  return rows.slice(1).map((values) => {
     const row: Record<string, string> = {};
-    headers.forEach((h, i) => (row[h] = values[i] ?? ""));
+
+    headers.forEach((h, i) => {
+      row[h] = (values[i] ?? "").trim();
+    });
+
     return row;
   });
 }
